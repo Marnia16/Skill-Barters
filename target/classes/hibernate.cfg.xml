@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE hibernate-configuration PUBLIC
+        "-//Hibernate/Hibernate Configuration DTD 3.0//EN"
+        "http://hibernate.sourceforge.net/hibernate-configuration-3.0.dtd">
+<hibernate-configuration>
+    <session-factory>
+        <!-- AWS RDS MySQL Connection — update endpoint/credentials -->
+        <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
+        <property name="hibernate.connection.url">jdbc:mysql://skillbarter-db.c168e4uusdl4.ap-southeast-2.rds.amazonaws.com:3306/skillbarter_db?useSSL=false&amp;allowPublicKeyRetrieval=true&amp;serverTimezone=UTC</property>
+        <property name="hibernate.connection.username">admin</property>
+        <property name="hibernate.connection.password">skillbarter</property>
+
+        <!-- Dialect -->
+        <property name="hibernate.dialect">org.hibernate.dialect.MySQL8Dialect</property>
+
+        <!-- Schema auto-update (use 'create' first run, then 'update') -->
+        <property name="hibernate.hbm2ddl.auto">update</property>
+
+        <!-- Show SQL in console (turn off in production) -->
+        <property name="hibernate.show_sql">true</property>
+        <property name="hibernate.format_sql">true</property>
+
+        <!-- HikariCP connection pool via Hibernate -->
+        <property name="hibernate.connection.provider_class">com.zaxxer.hikari.hibernate.HikariConnectionProvider</property>
+        <property name="hibernate.hikari.maximumPoolSize">10</property>
+        <property name="hibernate.hikari.minimumIdle">2</property>
+
+        <!-- Entity mappings -->
+        <mapping class="com.skillbarter.model.User"/>
+        <mapping class="com.skillbarter.model.Skill"/>
+        <mapping class="com.skillbarter.model.BarterRequest"/>
+        <mapping class="com.skillbarter.model.Notification"/>
+    </session-factory>
+</hibernate-configuration>
