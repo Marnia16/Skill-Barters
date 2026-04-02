@@ -74,4 +74,17 @@ public class UserService implements IUserService {
     public void deleteUser(int userId) {
         userDAO.delete(userId);
     }
+    public void resetPassword(String email, String newPassword) {
+        if (newPassword == null || newPassword.length() < 6)
+            throw new IllegalArgumentException("Password must be at least 6 characters.");
+        User user = userDAO.findByEmail(email.trim().toLowerCase())
+                .orElseThrow(() -> new com.skillbarter.exception.UserNotFoundException(email));
+        user.setPassword(com.skillbarter.util.PasswordUtil.hash(newPassword));
+        userDAO.update(user);
+    }
+    
+    public java.util.Optional<User> findByEmail(String email) {
+        return userDAO.findByEmail(email.trim().toLowerCase());
+    }
+
 }

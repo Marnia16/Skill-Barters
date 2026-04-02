@@ -118,6 +118,7 @@ public class DashboardPanel extends JPanel {
         this.currentUser = user;
         welcomeLabel.setText("Welcome, " + user.getName() + "!");
         loadSkills();
+        populateProfileFields(); // populate name + email in profile tab
         notifService.startPolling(user.getId(), this::onNotifications);
         startParticles();
     }
@@ -874,99 +875,268 @@ public class DashboardPanel extends JPanel {
     // ══════════════════════════════════════════════════════════
     //  TAB 4 — PROFILE
     // ══════════════════════════════════════════════════════════
-    private JPanel buildProfileTab() {
-        JPanel p = new JPanel(new GridBagLayout());
-        p.setOpaque(false);
-        p.setBorder(new EmptyBorder(18,18,18,18));
 
+    // Store profile field refs so setUser() can populate them
+    private JTextField profileNameField;
+    private JLabel     profileEmailLabel;
+    private JComboBox<String> profileGenderBox;
+    private JTextField profileBioField;
+    private JComboBox<String> profileLang1Box;
+    private JComboBox<String> profileLang2Box;
+
+    private JPanel buildProfileTab() {
+        JPanel outer = new JPanel(new GridBagLayout());
+        outer.setOpaque(false);
+        outer.setBorder(new EmptyBorder(18, 18, 18, 18));
+
+        // ── Card ──────────────────────────────────────────────
         JPanel card = new JPanel(new GridBagLayout()) {
             @Override protected void paintComponent(Graphics g) {
-                Graphics2D g2=(Graphics2D)g.create();
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                 g2.setColor(new Color(0x1A0A02));
-                g2.fillRoundRect(0,0,getWidth(),getHeight(),14,14);
-                g2.setColor(new Color(196,154,108,50));
-                g2.setStroke(new BasicStroke(.8f));
-                g2.drawRoundRect(0,0,getWidth()-1,getHeight()-1,14,14);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 16, 16);
+                g2.setColor(new Color(196, 154, 108, 60));
+                g2.setStroke(new BasicStroke(1f));
+                g2.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 16, 16);
                 g2.dispose();
             }
         };
         card.setOpaque(false);
-        card.setPreferredSize(new Dimension(520,480));
-        card.setBorder(new EmptyBorder(28,32,28,32));
+        card.setPreferredSize(new Dimension(620, 580));  // bigger card
+        card.setBorder(new EmptyBorder(36, 44, 36, 44)); // more padding
 
         GridBagConstraints c = new GridBagConstraints();
-        c.gridx=0; c.gridy=0; c.gridwidth=2;
-        c.fill=GridBagConstraints.HORIZONTAL;
-        c.insets=new Insets(0,0,20,0);
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1;
 
-        JLabel h = new JLabel("◉  Your Profile", SwingConstants.CENTER);
-        h.setFont(new Font("Georgia",Font.BOLD,18)); h.setForeground(GOLD_LIGHT);
-        card.add(h,c);
+        // ── Title ─────────────────────────────────────────────
+        c.gridx = 0; c.gridy = 0; c.gridwidth = 2;
+        c.insets = new Insets(0, 0, 28, 0);
+        JLabel h = new JLabel("◉   Your Profile", SwingConstants.CENTER);
+        h.setFont(new Font("Georgia", Font.BOLD, 24)); // bigger title
+        h.setForeground(GOLD_LIGHT);
+        card.add(h, c);
 
-        // Helper to add a label-field pair
-        int[] row = {1};
-        java.util.function.BiConsumer<String,JComponent> addRow = (lbl,comp) -> {
-            c.gridy=row[0]; c.gridwidth=1; c.insets=new Insets(0,0,12,12); c.gridx=0;
-            JLabel l=new JLabel(lbl); l.setFont(new Font("SansSerif",Font.BOLD,10));
-            l.setForeground(GOLD_MUTED);
-            card.add(l,c);
-            c.gridx=1; c.insets=new Insets(0,0,12,0); c.weightx=1;
-            card.add(comp,c); c.weightx=0;
-            row[0]++;
+        // ── Gold divider line ──────────────────────────────────
+        c.gridy = 1; c.insets = new Insets(0, 0, 24, 0);
+        JSeparator sep = new JSeparator();
+        sep.setForeground(new Color(196, 154, 108, 60));
+        sep.setBackground(new Color(196, 154, 108, 60));
+        card.add(sep, c);
+
+        // ── Helper: add a label + component row ───────────────
+        int[] row = {2};
+
+        // ── NAME — editable text field ─────────────────────────
+        addProfileRow(card, c, row, "NAME",
+            "User can change their display name");
+        c.gridy = row[0] - 1; c.gridx = 1;
+        c.insets = new Insets(0, 0, 18, 0);
+        profileNameField = profileTextField("");
+        profileNameField.setToolTipText("Your display name — can be changed");
+        card.add(profileNameField, c);
+
+        // ── EMAIL — static, read-only ──────────────────────────
+        addProfileRow(card, c, row, "EMAIL",
+            "Email address cannot be changed");
+        c.gridy = row[0] - 1; c.gridx = 1;
+        c.insets = new Insets(0, 0, 18, 0);
+        profileEmailLabel = new JLabel("");
+        profileEmailLabel.setFont(new Font("SansSerif", Font.PLAIN, 14));
+        profileEmailLabel.setForeground(GOLD_MUTED);
+        profileEmailLabel.setBorder(new CompoundBorder(
+            new LineBorder(new Color(0x3D2010), 1, true),
+            new EmptyBorder(10, 14, 10, 14)));
+        profileEmailLabel.setOpaque(true);
+        profileEmailLabel.setBackground(new Color(0x0E0602));
+        // Lock icon hint
+        JPanel emailRow = new JPanel(new BorderLayout(8, 0));
+        emailRow.setOpaque(false);
+        emailRow.add(profileEmailLabel, BorderLayout.CENTER);
+        JLabel lockHint = new JLabel("🔒 cannot be changed");
+        lockHint.setFont(new Font("SansSerif", Font.ITALIC, 10));
+        lockHint.setForeground(new Color(0x5C3A1E));
+        emailRow.add(lockHint, BorderLayout.EAST);
+        card.add(emailRow, c);
+
+        // ── GENDER — starts with "Select your gender..." ───────
+        addProfileRow(card, c, row, "GENDER", "");
+        c.gridy = row[0] - 1; c.gridx = 1;
+        c.insets = new Insets(0, 0, 18, 0);
+        // Prepend a placeholder option
+        String[] gendersWithPrompt = new String[GENDERS.length + 1];
+        gendersWithPrompt[0] = "— Select your gender —";
+        System.arraycopy(GENDERS, 0, gendersWithPrompt, 1, GENDERS.length);
+        profileGenderBox = profileCombo(gendersWithPrompt);
+        profileGenderBox.setSelectedIndex(0);
+        card.add(profileGenderBox, c);
+
+        // ── BIO ────────────────────────────────────────────────
+        addProfileRow(card, c, row, "BIO", "");
+        c.gridy = row[0] - 1; c.gridx = 1;
+        c.insets = new Insets(0, 0, 18, 0);
+        profileBioField = profileTextField("Tell others about yourself...");
+        card.add(profileBioField, c);
+
+        // ── 1ST TEACHING LANGUAGE ──────────────────────────────
+        addProfileRow(card, c, row, "1ST LANGUAGE", "");
+        c.gridy = row[0] - 1; c.gridx = 1;
+        c.insets = new Insets(0, 0, 18, 0);
+        String[] langsWithPrompt = new String[LANGUAGES.length + 1];
+        langsWithPrompt[0] = "— Select language —";
+        System.arraycopy(LANGUAGES, 0, langsWithPrompt, 1, LANGUAGES.length);
+        profileLang1Box = profileCombo(langsWithPrompt);
+        profileLang1Box.setSelectedIndex(0);
+        card.add(profileLang1Box, c);
+
+        // ── 2ND TEACHING LANGUAGE ──────────────────────────────
+        addProfileRow(card, c, row, "2ND LANGUAGE", "");
+        c.gridy = row[0] - 1; c.gridx = 1;
+        c.insets = new Insets(0, 0, 24, 0);
+        profileLang2Box = profileCombo(langsWithPrompt);
+        profileLang2Box.setSelectedIndex(0);
+        card.add(profileLang2Box, c);
+
+        // ── Save button ────────────────────────────────────────
+        c.gridx = 0; c.gridy = row[0]; c.gridwidth = 2;
+        c.insets = new Insets(0, 0, 0, 0);
+        JButton saveBtn = new JButton("Save Profile  →") {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(getModel().isRollover() ? GOLD_LIGHT : GOLD);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+                g2.dispose();
+                super.paintComponent(g);
+            }
         };
+        saveBtn.setOpaque(false); saveBtn.setContentAreaFilled(false);
+        saveBtn.setBorderPainted(false); saveBtn.setFocusPainted(false);
+        saveBtn.setForeground(BG_DEEP);
+        saveBtn.setFont(new Font("SansSerif", Font.BOLD, 14)); // bigger button text
+        saveBtn.setPreferredSize(new Dimension(0, 50));         // taller button
+        saveBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 
-        // Name (display only)
-        JLabel nameVal = new JLabel(currentUser!=null?currentUser.getName():"");
-        nameVal.setFont(new Font("SansSerif",Font.PLAIN,13));
-        nameVal.setForeground(GOLD_LIGHT);
-        addRow.accept("NAME", nameVal);
-
-        // Email (display only)
-        JLabel emailVal = new JLabel(currentUser!=null?currentUser.getEmail():"");
-        emailVal.setFont(new Font("SansSerif",Font.PLAIN,13));
-        emailVal.setForeground(GOLD_LIGHT);
-        addRow.accept("EMAIL", emailVal);
-
-        // Gender
-        JComboBox<String> genderBox = darkCombo(GENDERS);
-        addRow.accept("GENDER", genderBox);
-
-        // Bio
-        JTextField bioField = darkField(280);
-        bioField.setToolTipText("Tell others about yourself");
-        addRow.accept("BIO", bioField);
-
-        // 1st teaching language
-        JComboBox<String> lang1 = darkCombo(LANGUAGES);
-        addRow.accept("1ST LANGUAGE", lang1);
-
-        // 2nd teaching language
-        JComboBox<String> lang2 = darkCombo(LANGUAGES);
-        lang2.setSelectedIndex(1);
-        addRow.accept("2ND LANGUAGE", lang2);
-
-        // Save button
-        c.gridy=row[0]; c.gridwidth=2; c.gridx=0; c.insets=new Insets(12,0,0,0);
-        JButton saveBtn = goldButton("Save Profile  →");
         saveBtn.addActionListener(e -> {
-            String bio = bioField.getText().trim();
+            String newName = profileNameField.getText().trim();
+            String bio     = profileBioField.getText().trim();
+            String gender  = profileGenderBox.getSelectedItem().toString();
+
+            if (newName.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Name cannot be empty.", "Validation", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (gender.startsWith("—")) {
+                JOptionPane.showMessageDialog(this, "Please select your gender.", "Validation", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            if (profileLang1Box.getSelectedItem().toString().startsWith("—")) {
+                JOptionPane.showMessageDialog(this, "Please select your 1st teaching language.", "Validation", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
             try {
-                userService_updateBio(currentUser.getId(), bio);
-                JOptionPane.showMessageDialog(this,"Profile saved successfully!");
-            } catch(Exception ex) {
-                JOptionPane.showMessageDialog(this,"Error: "+ex.getMessage());
+                mainApp.getUserService().updateProfile(currentUser.getId(), newName, bio);
+                currentUser.setName(newName);
+                welcomeLabel.setText("Welcome, " + newName + "!");
+                JOptionPane.showMessageDialog(this,
+                    "<html><body style='font-family:Georgia;font-size:13px'>" +
+                    "<b>Profile saved successfully!</b><br><br>" +
+                    "Name: " + newName + "<br>" +
+                    "Gender: " + gender + "<br>" +
+                    "Languages: " + profileLang1Box.getSelectedItem() +
+                    " / " + profileLang2Box.getSelectedItem() +
+                    "</body></html>",
+                    "Saved", JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Error saving: " + ex.getMessage(),
+                    "Error", JOptionPane.ERROR_MESSAGE);
             }
         });
-        card.add(saveBtn,c);
+        card.add(saveBtn, c);
 
-        p.add(card);
-        return p;
+        outer.add(card);
+        return outer;
+    }
+
+    /** Adds just the left-column label for a profile row and advances the row counter */
+    private void addProfileRow(JPanel card, GridBagConstraints c,
+                                int[] row, String labelText, String tooltip) {
+        c.gridx = 0; c.gridy = row[0]; c.gridwidth = 1;
+        c.insets = new Insets(0, 0, 18, 20);
+        c.weightx = 0;
+        JLabel lbl = new JLabel(labelText);
+        lbl.setFont(new Font("SansSerif", Font.BOLD, 12)); // bigger label
+        lbl.setForeground(GOLD_MUTED);
+        lbl.setPreferredSize(new Dimension(150, 44));
+        if (!tooltip.isEmpty()) lbl.setToolTipText(tooltip);
+        card.add(lbl, c);
+        c.weightx = 1;
+        row[0]++;
+    }
+
+    /** Styled text field for profile — bigger than the generic darkField */
+    private JTextField profileTextField(String placeholder) {
+        JTextField f = new JTextField();
+        f.setBackground(BG_FIELD);
+        f.setForeground(GOLD_LIGHT);
+        f.setCaretColor(GOLD);
+        f.setFont(new Font("SansSerif", Font.PLAIN, 14)); // bigger font
+        f.setOpaque(true);
+        f.setToolTipText(placeholder);
+        f.setBorder(new CompoundBorder(
+            new LineBorder(BORDER_DIM, 1, true),
+            new EmptyBorder(10, 14, 10, 14)));
+        f.setPreferredSize(new Dimension(0, 46)); // taller field
+        f.addFocusListener(new FocusAdapter() {
+            public void focusGained(FocusEvent e) {
+                f.setBorder(new CompoundBorder(
+                    new LineBorder(GOLD, 1, true), new EmptyBorder(10, 14, 10, 14)));
+            }
+            public void focusLost(FocusEvent e) {
+                f.setBorder(new CompoundBorder(
+                    new LineBorder(BORDER_DIM, 1, true), new EmptyBorder(10, 14, 10, 14)));
+            }
+        });
+        return f;
+    }
+
+    /** Styled combo box for profile — bigger than the generic darkCombo */
+    private JComboBox<String> profileCombo(String[] items) {
+        JComboBox<String> b = new JComboBox<>(items);
+        b.setBackground(BG_FIELD);
+        b.setForeground(GOLD_LIGHT);
+        b.setFont(new Font("SansSerif", Font.PLAIN, 14)); // bigger font
+        b.setBorder(new LineBorder(BORDER_DIM, 1, true));
+        b.setPreferredSize(new Dimension(0, 46));
+        b.setRenderer(new DefaultListCellRenderer() {
+            @Override public Component getListCellRendererComponent(
+                    JList<?> l, Object v, int i, boolean sel, boolean foc) {
+                super.getListCellRendererComponent(l, v, i, sel, foc);
+                setBackground(sel ? new Color(0x2C1A0E) : BG_FIELD);
+                // placeholder option shown in muted colour
+                boolean isPrompt = v != null && v.toString().startsWith("—");
+                setForeground(isPrompt ? GOLD_MUTED : sel ? GOLD_LIGHT : GOLD_LIGHT);
+                setFont(new Font("SansSerif", isPrompt ? Font.ITALIC : Font.PLAIN, 13));
+                setBorder(new EmptyBorder(5, 12, 5, 12));
+                return this;
+            }
+        });
+        return b;
+    }
+
+    /**
+     * Called from setUser() to populate profile fields after login.
+     * Must be called AFTER buildUI() has run.
+     */
+    private void populateProfileFields() {
+        if (currentUser == null) return;
+        if (profileNameField  != null) profileNameField.setText(currentUser.getName());
+        if (profileEmailLabel != null) profileEmailLabel.setText(currentUser.getEmail());
     }
 
     private void userService_updateBio(int id, String bio) {
-        // Calls through to UserService.updateProfile
-        // We pass current name to avoid overwriting it
         if (currentUser != null)
             mainApp.getUserService().updateProfile(id, currentUser.getName(), bio);
     }

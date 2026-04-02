@@ -15,4 +15,6 @@ public interface IUserService {
     List<User> findAll();
     void updateProfile(int userId, String name, String bio);
     void deleteUser(int userId);
+    void resetPassword(String email, String newPassword);
+    java.util.Optional<User> findByEmail(String email);
 }
