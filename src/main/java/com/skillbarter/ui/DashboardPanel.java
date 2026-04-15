@@ -250,12 +250,26 @@ public class DashboardPanel extends JPanel {
         JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         right.setOpaque(false);
         notifBadge = new JLabel("🔔  0");
-        notifBadge.setFont(new Font("SansSerif",Font.BOLD,11));
+        notifBadge.setFont(new Font("SansSerif",Font.BOLD,12));
         notifBadge.setForeground(GOLD_MUTED);
         notifBadge.setOpaque(true);
         notifBadge.setBackground(new Color(0x2C1A0E));
         notifBadge.setBorder(new CompoundBorder(
-            new LineBorder(BORDER_DIM,1,true), new EmptyBorder(4,10,4,10)));
+            new LineBorder(BORDER_DIM,1,true), new EmptyBorder(5,12,5,12)));
+        // FIX: make bell clickable — opens notification dialog on click
+        notifBadge.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        notifBadge.setToolTipText("Click to view notifications");
+        notifBadge.addMouseListener(new MouseAdapter() {
+            @Override public void mouseClicked(MouseEvent e) {
+                showNotificationDialog();
+            }
+            @Override public void mouseEntered(MouseEvent e) {
+                notifBadge.setBackground(new Color(0x3D2010));
+            }
+            @Override public void mouseExited(MouseEvent e) {
+                notifBadge.setBackground(new Color(0x2C1A0E));
+            }
+        });
 
         JButton logout = new JButton("Logout");
         logout.setBackground(GOLD); logout.setForeground(BG_DEEP);
@@ -1241,17 +1255,252 @@ public class DashboardPanel extends JPanel {
         return p;
     }
 
-    // ── Notifications callback (concept 7) ─────────────────────
+    // ── Stored unread notifications (updated by poller + manual fetch) ─
+    private final List<Notification> cachedNotifications = new ArrayList<>();
+
+    /** Called by background polling thread when new notifications arrive */
     private void onNotifications(List<Notification> notifs) {
-        notifBadge.setText("🔔  " + notifs.size());
-        notifBadge.setForeground(GOLD);
-        StringBuilder sb = new StringBuilder("<html><body style='font-family:Georgia;color:#EDD9C0'>");
-        sb.append("<b>").append(notifs.size()).append(" New Notification(s)</b><br><br>");
-        notifs.forEach(n -> sb.append("• ").append(n.getMessage()).append("<br>"));
-        sb.append("</body></html>");
-        JOptionPane.showMessageDialog(this, sb.toString(), "Notifications", JOptionPane.INFORMATION_MESSAGE);
-        notifBadge.setText("🔔  0");
-        notifBadge.setForeground(GOLD_MUTED);
+        cachedNotifications.clear();
+        cachedNotifications.addAll(notifs);
+        int count = notifs.size();
+        notifBadge.setText("🔔  " + count);
+        notifBadge.setForeground(count > 0 ? GOLD : GOLD_MUTED);
+        notifBadge.setBorder(new CompoundBorder(
+            new LineBorder(count > 0 ? GOLD : BORDER_DIM, 1, true),
+            new EmptyBorder(5, 12, 5, 12)));
+    }
+
+    /**
+     * Opens a styled notification dialog when the bell is clicked.
+     * Also fetches fresh notifications from DB directly so clicking
+     * always shows current data even if polling hasn't fired yet.
+     */
+    private void showNotificationDialog() {
+        // Fetch fresh from DB on click using a background worker
+        SwingWorker<List<Notification>, Void> worker = new SwingWorker<>() {
+            @Override
+            protected List<Notification> doInBackground() {
+                try {
+                    com.skillbarter.dao.NotificationDAO dao =
+                        new com.skillbarter.dao.NotificationDAO();
+                    return dao.findUnreadByUser(currentUser.getId());
+                } catch (Exception ex) {
+                    System.err.println("[Notif] DB fetch error: " + ex.getMessage());
+                    return new ArrayList<>();
+                }
+            }
+            @Override
+            protected void done() {
+                try {
+                    List<Notification> fresh = get();
+                    cachedNotifications.clear();
+                    cachedNotifications.addAll(fresh);
+                    renderNotificationDialog(fresh);
+                } catch (Exception ex) {
+                    renderNotificationDialog(new ArrayList<>());
+                }
+            }
+        };
+        worker.execute();
+    }
+
+    /** Renders the dark-themed notification popup dialog */
+    private void renderNotificationDialog(List<Notification> notifs) {
+        JDialog dialog = new JDialog((Frame) null, "Notifications", true);
+        dialog.setSize(480, notifs.isEmpty() ? 220 : Math.min(480, 160 + notifs.size() * 72));
+        dialog.setLocationRelativeTo(this);
+        dialog.setResizable(false);
+
+        // Main panel with dark background
+        JPanel main = new JPanel(new BorderLayout(0, 0)) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setColor(new Color(0x0E0602));
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                g2.dispose();
+            }
+        };
+
+        // Header
+        JPanel header = new JPanel(new BorderLayout()) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setColor(new Color(0x1A0A02));
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                g2.setColor(new Color(196, 154, 108, 50));
+                g2.drawLine(0, getHeight()-1, getWidth(), getHeight()-1);
+                g2.dispose();
+            }
+        };
+        header.setOpaque(false);
+        header.setBorder(new EmptyBorder(14, 18, 14, 18));
+
+        JLabel title = new JLabel("🔔   Notifications");
+        title.setFont(new Font("Georgia", Font.BOLD, 16));
+        title.setForeground(GOLD_LIGHT);
+
+        JLabel countLbl = new JLabel(notifs.isEmpty() ? "No new notifications" :
+            notifs.size() + " unread");
+        countLbl.setFont(new Font("SansSerif", Font.PLAIN, 11));
+        countLbl.setForeground(notifs.isEmpty() ? GOLD_MUTED : GOLD);
+
+        header.add(title,    BorderLayout.WEST);
+        header.add(countLbl, BorderLayout.EAST);
+        main.add(header, BorderLayout.NORTH);
+
+        // Notification list
+        JPanel listPanel = new JPanel();
+        listPanel.setLayout(new BoxLayout(listPanel, BoxLayout.Y_AXIS));
+        listPanel.setOpaque(false);
+        listPanel.setBorder(new EmptyBorder(10, 14, 10, 14));
+
+        if (notifs.isEmpty()) {
+            JLabel emptyLbl = new JLabel("You have no unread notifications.", SwingConstants.CENTER);
+            emptyLbl.setFont(new Font("Georgia", Font.ITALIC, 13));
+            emptyLbl.setForeground(GOLD_MUTED);
+            emptyLbl.setAlignmentX(CENTER_ALIGNMENT);
+            listPanel.add(Box.createVerticalStrut(20));
+            listPanel.add(emptyLbl);
+            listPanel.add(Box.createVerticalStrut(20));
+
+            // Helpful tip
+            JLabel tip = new JLabel("Send a barter request to receive notifications.", SwingConstants.CENTER);
+            tip.setFont(new Font("SansSerif", Font.PLAIN, 11));
+            tip.setForeground(new Color(0x5C3A1E));
+            tip.setAlignmentX(CENTER_ALIGNMENT);
+            listPanel.add(tip);
+        } else {
+            for (Notification n : notifs) {
+                listPanel.add(buildNotifCard(n));
+                listPanel.add(Box.createVerticalStrut(8));
+            }
+        }
+
+        JScrollPane scroll = new JScrollPane(listPanel);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+        scroll.setBorder(BorderFactory.createEmptyBorder());
+        scroll.getVerticalScrollBar().setBackground(new Color(0x1A0A02));
+        main.add(scroll, BorderLayout.CENTER);
+
+        // Footer — mark all read button
+        if (!notifs.isEmpty()) {
+            JPanel footer = new JPanel(new FlowLayout(FlowLayout.RIGHT, 14, 10)) {
+                @Override protected void paintComponent(Graphics g) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setColor(new Color(0x1A0A02));
+                    g2.fillRect(0, 0, getWidth(), getHeight());
+                    g2.setColor(new Color(196, 154, 108, 40));
+                    g2.drawLine(0, 0, getWidth(), 0);
+                    g2.dispose();
+                }
+            };
+            footer.setOpaque(false);
+
+            JButton markRead = new JButton("Mark all as read") {
+                @Override protected void paintComponent(Graphics g) {
+                    Graphics2D g2 = (Graphics2D) g.create();
+                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                    g2.setColor(getModel().isRollover() ? GOLD_LIGHT : GOLD);
+                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), 6, 6);
+                    g2.dispose();
+                    super.paintComponent(g);
+                }
+            };
+            markRead.setOpaque(false); markRead.setContentAreaFilled(false);
+            markRead.setBorderPainted(false); markRead.setFocusPainted(false);
+            markRead.setForeground(BG_DEEP);
+            markRead.setFont(new Font("SansSerif", Font.BOLD, 11));
+            markRead.setPreferredSize(new Dimension(160, 34));
+            markRead.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            markRead.addActionListener(e -> {
+                // Mark all read in DB
+                new SwingWorker<Void, Void>() {
+                    @Override protected Void doInBackground() {
+                        try {
+                            new com.skillbarter.dao.NotificationDAO()
+                                .markAllRead(currentUser.getId());
+                        } catch (Exception ex) {
+                            System.err.println("[Notif] markAllRead error: " + ex.getMessage());
+                        }
+                        return null;
+                    }
+                    @Override protected void done() {
+                        cachedNotifications.clear();
+                        notifBadge.setText("🔔  0");
+                        notifBadge.setForeground(GOLD_MUTED);
+                        notifBadge.setBorder(new CompoundBorder(
+                            new LineBorder(BORDER_DIM, 1, true),
+                            new EmptyBorder(5, 12, 5, 12)));
+                        dialog.dispose();
+                    }
+                }.execute();
+            });
+            footer.add(markRead);
+            main.add(footer, BorderLayout.SOUTH);
+        }
+
+        dialog.setContentPane(main);
+        dialog.setVisible(true);
+    }
+
+    /** Single notification card inside the dialog */
+    private JPanel buildNotifCard(Notification n) {
+        JPanel card = new JPanel(new BorderLayout(10, 0)) {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(0x1E0D04));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                // left accent
+                g2.setColor(GOLD);
+                g2.fillRoundRect(0, 0, 3, getHeight(), 2, 2);
+                g2.setColor(new Color(196, 154, 108, 35));
+                g2.setStroke(new BasicStroke(.8f));
+                g2.drawRoundRect(0, 0, getWidth()-1, getHeight()-1, 8, 8);
+                g2.dispose();
+            }
+        };
+        card.setOpaque(false);
+        card.setBorder(new EmptyBorder(10, 14, 10, 14));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 62));
+
+        // Bell icon
+        JLabel icon = new JLabel("🔔");
+        icon.setFont(new Font("SansSerif", Font.PLAIN, 18));
+        card.add(icon, BorderLayout.WEST);
+
+        // Message + time
+        JPanel info = new JPanel(new BorderLayout(0, 3));
+        info.setOpaque(false);
+
+        JLabel msg = new JLabel("<html><body style='width:280px'>" + n.getMessage() + "</body></html>");
+        msg.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        msg.setForeground(GOLD_LIGHT);
+
+        JLabel time = new JLabel("New");
+        time.setFont(new Font("SansSerif", Font.ITALIC, 10));
+        time.setForeground(GOLD_MUTED);
+
+        info.add(msg,  BorderLayout.CENTER);
+        info.add(time, BorderLayout.SOUTH);
+        card.add(info, BorderLayout.CENTER);
+
+        // Unread dot
+        JPanel dot = new JPanel() {
+            @Override protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(GOLD);
+                g2.fillOval(0, 0, 8, 8);
+                g2.dispose();
+            }
+        };
+        dot.setOpaque(false);
+        dot.setPreferredSize(new Dimension(8, 8));
+        card.add(dot, BorderLayout.EAST);
+
+        return card;
     }
 
     // ══════════════════════════════════════════════════════════
